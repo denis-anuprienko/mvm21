@@ -3,7 +3,9 @@ cmake_minimum_required(VERSION 2.8)
 project(mvm21)
 
 option(USE_MPI "Compile with MPI support" ON)
-option(USE_OMP "Compile with OpenMP support" OFF)
+option(USE_OMP "Compile with OpenMP support" ON)
+
+unset(USE_OMP CACHE)
 
 add_executable(main main.cpp)
 
@@ -26,5 +28,7 @@ if(USE_MPI)
 endif()
 
 if(USE_OMP)
+    message("Dealing with OpenMP")
     add_definitions(-DUSE_OMP)
+    target_link_libraries(main -fopenmp)
 endif()
