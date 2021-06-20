@@ -2,6 +2,8 @@
 // icc -O2 mvm.c -lm
 // ./a.out
 
+#define USE_OMP
+
 #ifdef USE_MPI
 #include <mpi.h>
 #endif
@@ -32,6 +34,11 @@ int main (int argc, char *argv[])
     MPI_Comm_size (MPI_COMM_WORLD, &np);
     #ifdef USE_OMP
     th = omp_get_max_threads();
+    omp_set_num_threads(th);
+#pragma omp parallel
+    {
+    printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
+    }
     #endif
 
     n = N / np; // local number of vector components and matrix rows
@@ -39,35 +46,58 @@ int main (int argc, char *argv[])
     x = new double[static_cast<size_t>(n)];   // local components of vector x
     y = new double[static_cast<size_t>(n)];   // local components of vector y
     X = new double[static_cast<size_t>(N)];   // working vector with global X
+    if(id == 0)
+        printf("n = %d/%d = %d\n", N, np, n);
+
+    printf("Local indices for proc %d: [%d %d]\n", id, id*n, (id+1)*n-1);
 
     // Initialize owned part of the matrix
     for(i = 0; i < n; i++)
         for(j = 0; j < N; j++)
-            a[(i+id*n)*N + j] = 1. / (1. + i+id*n + j); // global i and j
+            a[i*N + j] = 1. + i+id*n + j;//1. / (1. + i+id*n + j); // global i and j
 
     // Initialize owned parts of vectors
     for(i = 0; i < n; i++){
         x[i] = i+id*n;
+        X[n*id + i] = x[i];
         y[i] = 0.;
     }
 
-    //MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
+#pragma omp barrier
     T = MPI_Wtime();
+    double *vals = new double[n];
     for(k = 0; k < M; k++){
 
         //...some code to collect global X[] from the other MPI processes
+        MPI_Status status;
+        for(int procid = 0; procid < np; procid++){
+            if(procid == id)
+                continue;
+            MPI_Send(x, n, MPI_DOUBLE, procid, 0, MPI_COMM_WORLD);
+            MPI_Recv(X+procid*n, n, MPI_DOUBLE, procid, 0, MPI_COMM_WORLD, &status);
+        }
 
         // omp parallel for pragma should be placed here!
-#pragma omp parallel for
         for(i = 0; i < n; i++){
             ai = a + i*N; // address of i-th matrix row
+#pragma omp parallel for
             for (j = 0; j < N; j++)
-                y[i] += ai[j] * x[j]; // use global X[] instead of x[] here!
+                y[i] += ai[j] * X[j]; // use global X[] instead of x[] here!
         }
     }
-    //MPI_Barrier(MPI_COMM_WORLD);
+#pragma omp barrier
+    MPI_Barrier(MPI_COMM_WORLD);
     T = MPI_Wtime() - T;
     perf = 1e-6 * N * N * M / T;
+
+//    if(id == 0)
+//    for(int i = 0; i < N; i++){
+//        printf("proc %d: x[%d] = %lf\n", id, i, X[i]);
+//    }
+//        for(int i = 0; i < n; i++){
+//            printf("proc %d: vals[%d] = %lf\n", id, i, vals[i]);
+//        }
 
     // Compute norm of vector Y here: sum=||Y||
     sum = 0.0;
@@ -77,7 +107,8 @@ int main (int argc, char *argv[])
 #endif
     for(i = 0; i < n; i++)
         sum += y[i] * y[i];
-    //MPI_Allreduce(...) for sum should be placed here
+    double dbuf = sum;
+    MPI_Allreduce(&dbuf, &sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     sum = sqrt(sum) / M;
 
     if (id == 0)
