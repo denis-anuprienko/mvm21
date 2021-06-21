@@ -25,7 +25,8 @@ int main (int argc, char *argv[])
 #ifdef USE_OMP
     th = omp_get_max_threads();
     omp_set_num_threads(th);
-    if(id == 0)
+#pragma omp parallel
+    if(id == 0 && omp_get_thread_num() == 0)
         printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
 #endif // USE_OMP
 
