@@ -15,6 +15,16 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <chrono>
+
+double Time()
+{
+#ifdef USE_MPI
+    return MPI_Wtime();
+#else
+    return std::chrono::system_clock::now().time_since_epoch().count();
+#endif
+}
 
 const int M = 100;            // just a number of repetitions
 
@@ -29,17 +39,19 @@ int main (int argc, char *argv[])
     double *a, *x, *y, *X, *ai, T, perf, sum;
 
     id = 0; np = 1; th = 1; // just a test for 1 process and 1 thread
+#ifdef USE_MPI
     MPI_Init (&argc, &argv);
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &np);
-    #ifdef USE_OMP
+#endif // USE_MPI
+#ifdef USE_OMP
     th = omp_get_max_threads();
     omp_set_num_threads(th);
-#pragma omp parallel
+    #pragma omp parallel
     {
     printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
     }
-    #endif
+#endif // USE_OMP
 
     n = N / np; // local number of vector components and matrix rows
     a = new double[static_cast<size_t>(n*N)]; // local rows of matrix A
@@ -63,13 +75,15 @@ int main (int argc, char *argv[])
         y[i] = 0.;
     }
 
+#ifdef USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
-#pragma omp barrier
-    T = MPI_Wtime();
+#endif // USE_MPI
+
+    T = Time();
     double *vals = new double[n];
     for(k = 0; k < M; k++){
 
-        //...some code to collect global X[] from the other MPI processes
+#ifdef USE_MPI
         MPI_Status status;
         for(int procid = 0; procid < np; procid++){
             if(procid == id)
@@ -77,18 +91,21 @@ int main (int argc, char *argv[])
             MPI_Send(x, n, MPI_DOUBLE, procid, 0, MPI_COMM_WORLD);
             MPI_Recv(X+procid*n, n, MPI_DOUBLE, procid, 0, MPI_COMM_WORLD, &status);
         }
+#endif // USE_MPI
 
-        // omp parallel for pragma should be placed here!
+#ifdef USE_OMP
+#pragma omp parallel for
+#endif // USE_OMP
         for(i = 0; i < n; i++){
             ai = a + i*N; // address of i-th matrix row
-#pragma omp parallel for
             for (j = 0; j < N; j++)
                 y[i] += ai[j] * X[j]; // use global X[] instead of x[] here!
         }
     }
-#pragma omp barrier
+#ifdef USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
-    T = MPI_Wtime() - T;
+#endif
+    T = Time() - T;
     perf = 1e-6 * N * N * M / T;
 
 //    if(id == 0)
