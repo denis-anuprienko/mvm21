@@ -1,9 +1,3 @@
-// gcc -O2 mvm.c -lm
-// icc -O2 mvm.c -lm
-// ./a.out
-
-#define USE_OMP
-
 #ifdef USE_MPI
 #include <mpi.h>
 #endif
