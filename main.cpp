@@ -1,24 +1,10 @@
-#ifdef USE_MPI
-#include <mpi.h>
-#endif
-
-#ifdef USE_OMP
-#include <omp.h>
-#endif
-
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <chrono>
-
-double Time()
-{
-#ifdef USE_MPI
-    return MPI_Wtime();
-#else
-    return std::chrono::system_clock::now().time_since_epoch().count();
+#include <mpi.h>
+#ifdef USE_OMP
+#include <omp.h>
 #endif
-}
 
 const int M = 100;            // just a number of repetitions
 
@@ -33,18 +19,14 @@ int main (int argc, char *argv[])
     double *a, *x, *y, *X, *ai, T, perf, sum;
 
     id = 0; np = 1; th = 1; // just a test for 1 process and 1 thread
-#ifdef USE_MPI
     MPI_Init (&argc, &argv);
     MPI_Comm_rank (MPI_COMM_WORLD, &id);
     MPI_Comm_size (MPI_COMM_WORLD, &np);
-#endif // USE_MPI
 #ifdef USE_OMP
     th = omp_get_max_threads();
     omp_set_num_threads(th);
-    #pragma omp parallel
-    {
-    printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
-    }
+    if(id == 0)
+        printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
 #endif // USE_OMP
 
     n = N / np; // local number of vector components and matrix rows
@@ -69,15 +51,11 @@ int main (int argc, char *argv[])
         y[i] = 0.;
     }
 
-#ifdef USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
-#endif // USE_MPI
 
-    T = Time();
+    T = MPI_Wtime();
     double *vals = new double[n];
     for(k = 0; k < M; k++){
-
-#ifdef USE_MPI
         MPI_Status status;
         for(int procid = 0; procid < np; procid++){
             if(procid == id)
@@ -85,7 +63,6 @@ int main (int argc, char *argv[])
             MPI_Send(x, n, MPI_DOUBLE, procid, 0, MPI_COMM_WORLD);
             MPI_Recv(X+procid*n, n, MPI_DOUBLE, procid, 0, MPI_COMM_WORLD, &status);
         }
-#endif // USE_MPI
 
 #ifdef USE_OMP
 #pragma omp parallel for
@@ -96,10 +73,8 @@ int main (int argc, char *argv[])
                 y[i] += ai[j] * X[j]; // use global X[] instead of x[] here!
         }
     }
-#ifdef USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
-#endif
-    T = Time() - T;
+    T = MPI_Wtime() - T;
     perf = 1e-6 * N * N * M / T;
 
 //    if(id == 0)
@@ -112,23 +87,19 @@ int main (int argc, char *argv[])
 
     // Compute norm of vector Y here: sum=||Y||
     sum = 0.0;
-    // omp parallel for pragma with "reduction(+:sum)" should be placed here
 #ifdef USE_OMP
 #pragma omp parallel for reduction(+:sum)
 #endif
     for(i = 0; i < n; i++)
         sum += y[i] * y[i];
-#ifdef USE_MPI
     double dbuf = sum;
     MPI_Allreduce(&dbuf, &sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-#endif // USE_MPI
     sum = sqrt(sum) / M;
 
     if (id == 0)
        printf("MPI-1p mvm: N=%d np=%d th=%d norm=%lf time=%lf perf=%.2lf MFLOPS\n", N, np, th, sum, T, perf);
 
-#ifdef USE_MPI
+
     MPI_Finalize();
-#endif // USE_MPI
     return 0;
 }
