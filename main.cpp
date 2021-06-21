@@ -27,7 +27,7 @@ int main (int argc, char *argv[])
     omp_set_num_threads(th);
 #pragma omp parallel
     if(id == 0 && omp_get_thread_num() == 0)
-        printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
+        ;//printf("OpenMP: proc %d has %d threads\n", id, omp_get_num_threads());
 #endif // USE_OMP
 
     n = N / np; // local number of vector components and matrix rows
@@ -35,15 +35,15 @@ int main (int argc, char *argv[])
     x = new double[static_cast<size_t>(n)];   // local components of vector x
     y = new double[static_cast<size_t>(n)];   // local components of vector y
     X = new double[static_cast<size_t>(N)];   // working vector with global X
-    if(id == 0)
-        printf("n = %d/%d = %d\n", N, np, n);
+//    if(id == 0)
+//        printf("n = %d/%d = %d\n", N, np, n);
 
-    printf("Local indices for proc %d: [%d %d]\n", id, id*n, (id+1)*n-1);
+    //printf("Local indices for proc %d: [%d %d]\n", id, id*n, (id+1)*n-1);
 
     // Initialize owned part of the matrix
     for(i = 0; i < n; i++)
         for(j = 0; j < N; j++)
-            a[i*N + j] = 1. + i+id*n + j;//1. / (1. + i+id*n + j); // global i and j
+            a[i*N + j] = 1. / (1. + i+id*n + j); // global i and j
 
     // Initialize owned parts of vectors
     for(i = 0; i < n; i++){
@@ -66,7 +66,7 @@ int main (int argc, char *argv[])
         }
 
 #ifdef USE_OMP
-#pragma omp parallel for
+#pragma omp parallel for private(i,j)
 #endif // USE_OMP
         for(i = 0; i < n; i++){
             ai = a + i*N; // address of i-th matrix row
