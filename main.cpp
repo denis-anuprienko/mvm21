@@ -124,13 +124,17 @@ int main (int argc, char *argv[])
 #endif
     for(i = 0; i < n; i++)
         sum += y[i] * y[i];
+#ifdef USE_MPI
     double dbuf = sum;
     MPI_Allreduce(&dbuf, &sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif // USE_MPI
     sum = sqrt(sum) / M;
 
     if (id == 0)
        printf("MPI-1p mvm: N=%d np=%d th=%d norm=%lf time=%lf perf=%.2lf MFLOPS\n", N, np, th, sum, T, perf);
 
+#ifdef USE_MPI
     MPI_Finalize();
+#endif // USE_MPI
     return 0;
 }
